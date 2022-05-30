@@ -2,8 +2,9 @@
 <p align="center">Extendable Virtual Machine for Project OpenEntry</p>
 
 # ❓ What is OpenEntry?
-OpenEntry is a project that does make [Entry](https://playentry.org/) more modular and more native.
-Also, more open-sourced.
+OpenEntry is a project that does make [Entry](https://playentry.org/) more modular and more native. Also, more open-sourced.
+<br>
+This repository is Core of Project OpenEntry, Virtual Machine of Project OpenEntry which executes bytecode transformed Entry Project.
 
 # ❗ Important
 * Currently on beta.
