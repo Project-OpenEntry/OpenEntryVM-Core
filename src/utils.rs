@@ -23,3 +23,16 @@ impl ReadBuffer for Box<[u8]> {
 }
 
 pub(crate) use gen_enum;
+
+use crate::executor::executor::Lock;
+
+#[inline]
+pub fn handle_lock<const DROP: bool>(lock: Lock) -> Lock {
+    if DROP {
+        drop(lock);
+
+        None
+    } else {
+        lock
+    }
+}

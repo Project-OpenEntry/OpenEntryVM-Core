@@ -1,12 +1,12 @@
 use tokio::time::Duration;
 
-use crate::{virtual_thread::VThread, vm_value::VMValue, thread_counter::ShutdownType, executor::executor::{ExecutorBehaviour, Lock}};
+use crate::{virtual_thread::VThread, vm_value::VMValue, thread_counter::ShutdownType, executor::executor::{ExecutorBehaviour, Lock}, utils::handle_lock};
 
 use self::intrinsics::Intrinsic;
 
 mod intrinsics;
 
-pub async fn call(thread: VThread, id: u8, lock: Lock) -> ExecutorBehaviour {
+pub async fn call<const DROP: bool>(thread: VThread, id: u8, lock: Lock) -> (Lock, ExecutorBehaviour) {
     match id {
         Intrinsic::Debug => {
             eprintln!("----- Register Dump -----");
@@ -35,18 +35,20 @@ pub async fn call(thread: VThread, id: u8, lock: Lock) -> ExecutorBehaviour {
                 drop(lock);
 
                 tokio::time::sleep(Duration::from_secs_f64(value)).await;
+
+                return (None, ExecutorBehaviour::None);
             }
         }
         Intrinsic::Restart => {
-            return ExecutorBehaviour::Shutdown(ShutdownType::Restarting);
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::Shutdown(ShutdownType::Restarting));
         }
         Intrinsic::Throw => {
             thread.set_error_data("Called Intrinsic::Throw").await;
             
-            return ExecutorBehaviour::Shutdown(ShutdownType::Error);
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::Shutdown(ShutdownType::Error));
         }
         _ => panic!("Unsupported VM Intrinsic Call")
     }
 
-    return ExecutorBehaviour::None;
+    return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
 }

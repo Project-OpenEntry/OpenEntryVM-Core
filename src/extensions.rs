@@ -32,7 +32,7 @@ impl Extensions {
     }
 }
 
-pub type ExtensionCall = fn(VThread, Lock, u32) -> ExecutorBehaviour;
+pub type ExtensionCall = fn(VThread, Lock, u32, bool) -> (Lock, ExecutorBehaviour);
 pub type EventCall = fn(Arc<Runtime>, EventType);
 pub struct Extension {
     _lib: Library, 
@@ -55,8 +55,8 @@ impl Extension {
         }
     }
 
-    pub fn function_call(&self, vthread: VThread, lock: Lock, id: u32) -> ExecutorBehaviour { (self.env_fn)(vthread, lock, id) }
-    pub fn interrupt_call(&self, vthread: VThread, lock: Lock, id: u32) -> ExecutorBehaviour { (self.envj_fn)(vthread, lock, id) }
+    pub fn function_call<const DROP: bool>(&self, vthread: VThread, lock: Lock, id: u32) -> (Lock, ExecutorBehaviour) { (self.env_fn)(vthread, lock, id, DROP) }
+    pub fn interrupt_call<const DROP: bool>(&self, vthread: VThread, lock: Lock, id: u32) -> (Lock, ExecutorBehaviour) { (self.envj_fn)(vthread, lock, id, DROP) }
     pub fn dispatch_event(&self, runtime: Arc<Runtime>, event: EventType) {
         (self.event)(runtime, event)
     }

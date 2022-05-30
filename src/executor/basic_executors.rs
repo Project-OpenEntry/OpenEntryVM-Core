@@ -1,5 +1,5 @@
 use crate::{virtual_thread::VThread, block_info::UnlockInfo};
-use super::{instructions, executor::ExecutorBehaviour};
+use super::{instructions, executor::{ExecutorBehaviour, Lock}};
 
 pub struct AtomicExecutor;
 pub struct SysLockInstExecutor;
@@ -10,7 +10,7 @@ pub struct SpinLockBlockExecutor;
 impl AtomicExecutor {
     pub async fn run(thread: VThread) {
         loop {
-            let behaviour = instructions::run(thread.clone(), None).await;
+            let (_, behaviour) = instructions::run::<true>(thread.clone(), None).await;
             
             if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                 thread.shutdown(shutdown_type);
@@ -30,7 +30,7 @@ impl SysLockInstExecutor {
         loop {
             let lock = Box::new(thread.lock.sys().clone().lock_owned().await);
 
-            let behaviour = instructions::run(thread.clone(), Some(lock)).await;
+            let (_, behaviour) = instructions::run::<true>(thread.clone(), Some(lock)).await;
             
             if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                 thread.shutdown(shutdown_type);
@@ -50,7 +50,7 @@ impl SpinLockInstExecutor {
         loop {
             let lock = Box::new(thread.lock.spin().clone().lock_owned().await);
 
-            let behaviour = instructions::run(thread.clone(), Some(lock)).await;
+            let (_, behaviour) = instructions::run::<true>(thread.clone(), Some(lock)).await;
             
             if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                 thread.shutdown(shutdown_type);
@@ -76,7 +76,7 @@ impl SysLockBlockExecutor {
                 match info {
                     UnlockInfo::Current => {
                         let lock = Box::new(thread.lock.sys().clone().lock_owned().await);
-                        let behaviour = instructions::run(thread.clone(), Some(lock)).await;
+                        let (_, behaviour) = instructions::run::<true>(thread.clone(), Some(lock)).await;
                 
                         if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                             thread.shutdown(shutdown_type);
@@ -90,10 +90,11 @@ impl SysLockBlockExecutor {
                     }
                     &UnlockInfo::Addr(end) => {
                         let lock = Box::new(thread.lock.sys().clone().lock_owned().await);
+                        let mut lock: Lock = Some(lock);
 
                         loop {
                             let have_to_unlock = thread.get_reg::<u64>(0) == end;
-                            let behaviour = instructions::run(thread.clone(), None).await;
+                            let (new_lock, behaviour) = instructions::run::<false>(thread.clone(), lock).await;
                     
                             if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                                 thread.shutdown(shutdown_type);
@@ -106,15 +107,17 @@ impl SysLockBlockExecutor {
                             }
 
                             if have_to_unlock {
-                                drop(lock);
+                                drop(new_lock);
 
                                 break;
                             }
+
+                            lock = new_lock;
                         }
                     }
                 }
             } else {
-                let behaviour = instructions::run(thread.clone(), None).await;
+                let (_, behaviour) = instructions::run::<true>(thread.clone(), None).await;
                 
                 if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                     thread.shutdown(shutdown_type);
@@ -141,7 +144,7 @@ impl SpinLockBlockExecutor {
                 match info {
                     UnlockInfo::Current => {
                         let lock = Box::new(thread.lock.spin().clone().lock_owned().await);
-                        let behaviour = instructions::run(thread.clone(), Some(lock)).await;
+                        let (_, behaviour) = instructions::run::<true>(thread.clone(), Some(lock)).await;
                 
                         if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                             thread.shutdown(shutdown_type);
@@ -155,35 +158,34 @@ impl SpinLockBlockExecutor {
                     }
                     &UnlockInfo::Addr(end) => {
                         let lock = Box::new(thread.lock.spin().clone().lock_owned().await);
+                        let mut lock: Lock = Some(lock);
 
                         loop {
                             let have_to_unlock = thread.get_reg::<u64>(0) == end;
-                            let behaviour = instructions::run(thread.clone(), None).await;
+                            let (new_lock, behaviour) = instructions::run::<false>(thread.clone(), lock).await;
                     
                             if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
-                                drop(lock);
-    
                                 thread.shutdown(shutdown_type);
                 
                                 break 'executor;
                             } else if thread.should_stop() {
-                                drop(lock);
-    
                                 thread.dispose();
                 
                                 break 'executor;
                             }
 
                             if have_to_unlock {
-                                drop(lock);
+                                drop(new_lock);
 
                                 break;
                             }
+
+                            lock = new_lock;
                         }
                     }
                 }
             } else {
-                let behaviour = instructions::run(thread.clone(), None).await;
+                let (_, behaviour) = instructions::run::<true>(thread.clone(), None).await;
                 
                 if let ExecutorBehaviour::Shutdown(shutdown_type) = behaviour {
                     thread.shutdown(shutdown_type);

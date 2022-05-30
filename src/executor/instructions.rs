@@ -1,8 +1,8 @@
-use crate::{op_codes::{OpCodes, OpLayout}, vm_value::{VMValue, STR_SIGNATURE}, virtual_thread::VThread, thread_counter::ShutdownType, js_impl, vm_intrinsics};
+use crate::{op_codes::{OpCodes, OpLayout}, vm_value::{VMValue, STR_SIGNATURE}, virtual_thread::VThread, thread_counter::ShutdownType, js_impl, vm_intrinsics, utils::handle_lock};
 
 use super::executor::{ExecutorBehaviour, Lock};
 
-pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
+pub async fn run<const DROP: bool>(thread: VThread, lock: Lock) -> (Lock, ExecutorBehaviour) {
     let ip = thread.get_reg::<u64>(0) as usize;
     let op = thread.get_mem::<u8>(ip);
 
@@ -117,7 +117,7 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
             thread.set_reg(0, thread.get_reg::<u64>(1) + addr as u64 * 8);
             thread.set_reg(2, thread.get_reg::<u64>(4));
 
-            return ExecutorBehaviour::None;
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
         }
         OpCodes::JT => {
             let addr = thread.get_mem::<u32>(ip + 4);
@@ -126,14 +126,14 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
                 thread.set_reg(0, addr);
             }
 
-            return ExecutorBehaviour::None;
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
         }
         OpCodes::JMP => {
             let addr = thread.get_mem::<u32>(ip + 4);
             
             thread.set_reg(0, addr);
             
-            return ExecutorBehaviour::None;
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
         }
         OpCodes::CMP => {
             let v0_reg = thread.get_mem::<u8>(ip + 1);
@@ -174,7 +174,7 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
 
             thread.inc_inst(8); // Pre-increase for moving `thread` variable
 
-            return vm_intrinsics::call(thread, id, lock).await;
+            return vm_intrinsics::call::<DROP>(thread, id, lock).await;
         }
         OpCodes::ENV => {
             let extension_id = thread.get_mem::<u32>(ip) & 0x00FFFFFF;
@@ -182,13 +182,15 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
 
             thread.inc_inst(8); // Pre-increase for moving `thread` variable
 
-            return thread.get_extension(extension_id).function_call(thread, lock, function_id);
+            return thread.get_extension(extension_id).function_call::<DROP>(thread, lock, function_id);
         }
         OpCodes::ENVJ => {
             let extension_id = thread.get_mem::<u32>(ip) & 0x00FFFFFF;
             let interrupt_id = thread.get_mem::<u32>(ip + 4);
 
-            return thread.get_extension(extension_id).interrupt_call(thread, lock, interrupt_id);
+            thread.inc_inst(8); // Pre-increase for moving `thread` variable
+
+            return thread.get_extension(extension_id).interrupt_call::<DROP>(thread, lock, interrupt_id);
         }
         OpCodes::SPAWN => {
             let addr = thread.get_mem::<u32>(ip + 4);
@@ -215,7 +217,7 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
             thread.set_reg(2, thread.get_reg::<u64>(4) + 88);
             thread.set_reg(4, thread.get_reg::<u64>(2));
 
-            return ExecutorBehaviour::None;
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
         }
         OpCodes::SUB32 => {
             let reg = thread.get_mem::<u8>(ip + 1);
@@ -230,7 +232,7 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
             thread.add32(reg, amount);
         }
         OpCodes::END => {
-            return ExecutorBehaviour::Shutdown(ShutdownType::Gracefully);
+            return (handle_lock::<DROP>(lock), ExecutorBehaviour::Shutdown(ShutdownType::Gracefully));
         }
         OpCodes::DROP => {
             let reg = thread.get_mem::<u8>(ip + 1);
@@ -249,5 +251,5 @@ pub async fn run(thread: VThread, lock: Lock) -> ExecutorBehaviour {
 
     thread.inc_inst(8);
 
-    ExecutorBehaviour::None
+    (handle_lock::<DROP>(lock), ExecutorBehaviour::None)
 }
