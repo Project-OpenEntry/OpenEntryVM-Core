@@ -1,0 +1,14 @@
+[package]
+name = "open-entry-vm"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.18.2", features = ["rt", "rt-multi-thread", "time", "macros", "sync"] }
+fast-async-mutex = "0.6.7"
+libloading = "0.7.3"
+num_cpus = "1.13.1"
+flate2 = "1.0.23"
+tar = "0.4.38"

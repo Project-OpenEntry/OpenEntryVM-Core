@@ -1,0 +1,112 @@
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, thread, time::Duration};
+
+    use crate::{thread_counter::ShutdownType, vm_config::{VMConfig, ExecutorKind, ThreadingKind}, runtime::Runtime, archive::Archive};
+
+    #[test]
+    pub fn basic() {
+        /*
+            ; Basic IO and Arithmetics Check
+
+            lstr d0, [base+1]
+            lstr d1, [base+2]
+            add d0, d1
+            int Debug
+            end
+        */
+
+        let archive = Archive {
+            files: HashMap::new(),
+            code: Box::new([
+                // Data Length
+                0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                // Data Section
+                0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x00, 0x00,
+                0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21, 0x00, 0x00,
+                // Code Section
+                0x02, 0x06, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00,
+                0x02, 0x07, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00,
+                0x03, 0x06, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]),
+            block_info: None,
+            conf: VMConfig {
+                executor_kind: ExecutorKind::Atomic,
+                threading_kind: ThreadingKind::Managed,
+                max_threads: 12,
+                stack_size: 1024 * 1024,
+            }
+        };
+    
+        let runtime = Runtime::new(archive);
+            
+        runtime.run();
+    }
+
+    #[test]
+    pub fn restart() {
+        /*
+            ; Runtime Restarting Check
+
+            lstr d0, [base+1]
+            lstr d1, [base+2]
+            add d0, d1
+            int Debug
+            mov r0, (f64) 1.0
+            int Sleep
+            int Restart
+            end
+        */
+
+        let archive = Archive {
+            files: HashMap::new(),
+            code: Box::new([
+                // Data Length
+                0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                // Data Section
+                0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x00, 0x00,
+                0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21, 0x00, 0x00,
+                // Code Section
+                0x02, 0x06, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00,
+                0x02, 0x07, 0x01, 0x00, 0x03, 0x00, 0x00, 0x00,
+                0x03, 0x06, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0xb1, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f,
+                0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x10, 0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            ]),
+            block_info: None,
+            conf: VMConfig {
+                executor_kind: ExecutorKind::Atomic,
+                threading_kind: ThreadingKind::Managed,
+                max_threads: 12,
+                stack_size: 1024 * 1024,
+            }
+        };
+    
+        let runtime = Runtime::new(archive);
+        
+        {
+            let runtime = runtime.clone();
+
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(5000));
+                runtime.shutdown(ShutdownType::Gracefully);
+            });
+        }
+
+        {
+            let runtime = runtime.clone();
+                
+            runtime.run();
+        }
+    }
+}
