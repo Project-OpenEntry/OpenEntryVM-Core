@@ -3,6 +3,7 @@
 use archive::Archive;
 use runtime::Runtime;
 
+mod extension_data;
 mod virtual_thread;
 mod thread_counter;
 mod vm_intrinsics;
@@ -22,16 +23,22 @@ mod stack;
 mod event;
 mod utils;
 mod tests;
+mod ffi;
 
 #[cfg(target_pointer_width = "32")]
 compile_error!("This program is only for 64-bit or higher operating system.");
 
+#[cfg(all(not(unix), not(windows)))]
+compile_error!("Unsupported Operating System");
+
 fn main() {
     if std::mem::size_of::<usize>() < 8 { panic!("This program is only for 64-bit or higher operating system.") }
 
-    let archive = Archive::open("./Example.entx");
+    // Not implemented yet
+
+    let archive = Archive::open("./Demo.entx");
 
     let runtime = Runtime::new(archive);
-        
+
     runtime.run();
 }

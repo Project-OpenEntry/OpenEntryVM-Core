@@ -6,8 +6,8 @@ use self::intrinsics::Intrinsic;
 
 mod intrinsics;
 
-pub async fn call<const DROP: bool>(thread: VThread, id: u8, lock: Lock) -> (Lock, ExecutorBehaviour) {
-    match id {
+pub async fn call<const DROP: bool>(thread: VThread, id: u8, mut lock: Lock) -> (Lock, ExecutorBehaviour) {
+    let behaviour = match id {
         Intrinsic::Debug => {
             eprintln!("----- Register Dump -----");
             eprintln!("INST: {}", VMValue::from(thread.get_reg::<u64>(0), thread.clone()));
@@ -26,29 +26,31 @@ pub async fn call<const DROP: bool>(thread: VThread, id: u8, lock: Lock) -> (Loc
             eprintln!("R5:   {}", VMValue::from(thread.get_reg::<u64>(13), thread.clone()));
             eprintln!("R6:   {}", VMValue::from(thread.get_reg::<u64>(14), thread.clone()));
             eprintln!("R7:   {}", VMValue::from(thread.get_reg::<u64>(15), thread.clone()));
+
+            ExecutorBehaviour::None
         }
         Intrinsic::Sleep => {
             if let VMValue::Float(value) = VMValue::from(thread.get_reg::<u64>(8), thread.clone()) {
                 // Only locking mutex for fetch/writing data with VThread.
                 // Locking mutex while waiting can make other threads can't do anything while waiting.
                 // So, We MUST drop after we passed critical section.
-                drop(lock);
+                drop(lock.take());
 
                 tokio::time::sleep(Duration::from_secs_f64(value)).await;
-
-                return (None, ExecutorBehaviour::None);
             }
+
+            ExecutorBehaviour::None
         }
         Intrinsic::Restart => {
-            return (handle_lock::<DROP>(lock), ExecutorBehaviour::Shutdown(ShutdownType::Restarting));
+            ExecutorBehaviour::Shutdown(ShutdownType::Restarting)
         }
         Intrinsic::Throw => {
             thread.set_error_data("Called Intrinsic::Throw").await;
             
-            return (handle_lock::<DROP>(lock), ExecutorBehaviour::Shutdown(ShutdownType::Error));
+            ExecutorBehaviour::Shutdown(ShutdownType::Error)
         }
         _ => panic!("Unsupported VM Intrinsic Call")
-    }
+    };
 
-    return (handle_lock::<DROP>(lock), ExecutorBehaviour::None);
+    return (handle_lock::<DROP>(lock), behaviour);
 }

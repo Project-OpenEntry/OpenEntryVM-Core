@@ -25,6 +25,9 @@ utils::gen_enum!(OpCodes, u8, [
     SUB32 = 0x15,
     ADD32 = 0x16,
     DROP  = 0x17,
+    LEA1  = 0x18,
+    LEA2  = 0x19,
+    ELEM  = 0x1A,
 ]);
 
 utils::gen_enum!(OpLayout, u8, [

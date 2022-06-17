@@ -11,7 +11,7 @@ pub enum ExecutorKind {
 }
 
 #[allow(dead_code)] // Constructed with ptr::read::<ThreadingKind>()
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ThreadingKind {
     Single = 0,
     Managed = 1,

@@ -2,7 +2,7 @@ use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, intrinsics, mem, pin::Pin,
 
 use tokio::sync::MutexGuard;
 
-use crate::{register::Register, shared_memory::SharedMemory, runtime::Runtime, thread_counter::ShutdownType, stack::Stack, executor::executor::ExecutorLock, block_info::BlockInfo, extensions::Extension};
+use crate::{register::Register, shared_memory::SharedMemory, runtime::Runtime, thread_counter::ShutdownType, stack::Stack, executor::executor::ExecutorLock, block_info::BlockInfo, extensions::Extension, extension_data::ExtensionData};
 
 pub type VThread = Pin<Arc<VirtualThread>>;
 
@@ -11,6 +11,8 @@ pub struct VirtualThread {
     pub memory: SharedMemory,
     pub lock: ExecutorLock,
     pub stack: Stack,
+
+    pub extension_data: ExtensionData,
 
     registers: [Register; 16],
     stack_size: usize,
@@ -34,6 +36,7 @@ impl VirtualThread {
         let vthread = Arc::pin(VirtualThread {
             lock: ExecutorLock::from_archive(&runtime.archive),
             
+            extension_data: ExtensionData::new(),
             stack: Stack::new(stack_size),
             flags: AtomicU64::new(0),
             registers: registers,
@@ -73,12 +76,12 @@ impl VirtualThread {
         self.runtime.spawn(addr).await;
     }
 
-    pub fn set_flag<const ID: u64>(&self, value: bool) {
-        self.flags.store((self.flags.load(Ordering::SeqCst) & !(1u64 << ID)) | value as u64, Ordering::SeqCst);
+    pub fn set_flag(&self, id: u64, value: bool) {
+        self.flags.store((self.flags.load(Ordering::SeqCst) & !(1u64 << id)) | value as u64, Ordering::SeqCst);
     }
 
-    pub fn get_flag<const ID: u64>(&self) -> bool {
-        unsafe { mem::transmute(((self.flags.load(Ordering::SeqCst) >> ID) & 0b1) as u8) }
+    pub fn get_flag(&self, id: u64) -> bool {
+        unsafe { mem::transmute(((self.flags.load(Ordering::SeqCst) >> id) & 0b1) as u8) }
     }
 
     pub fn sub32(&self, reg: u8, amount: u32) {
@@ -121,12 +124,12 @@ impl VirtualThread {
         }
     }
 
-    pub fn shutdown(self: Pin<Arc<Self>>, shutdown_type: ShutdownType) {
+    pub fn shutdown(self: VThread, shutdown_type: ShutdownType) {
         self.runtime.shutdown(shutdown_type);
         self.dispose();
     }
 
-    pub fn dispose(self: Pin<Arc<Self>>) {
+    pub fn dispose(self: VThread) {
         self.stack.dispose(self.stack_size);
         self.runtime.clone().dispose_thread(self);
     }

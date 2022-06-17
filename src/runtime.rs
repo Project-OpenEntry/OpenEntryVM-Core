@@ -1,13 +1,13 @@
 use tokio::{runtime::{Runtime as TokioRuntime, Builder as TokioBuilder}, sync::{mpsc::{self, UnboundedReceiver}, Mutex, RwLock}};
 
 use crate::{
-    virtual_thread::VirtualThread, executor::executor::{Executor, ExecutorExt}, 
+    virtual_thread::VThread, executor::executor::{Executor, ExecutorExt}, 
     thread_counter::{ThreadCounter, ShutdownType}, 
     shared_memory::{SharedMemory, Memory}, 
     vm_config::ThreadingKind,
-    archive::Archive, string::VMStr, extensions::Extensions, event::EventType,
+    archive::Archive, string::VMStr, extensions::Extensions, event::EventType, extension_data::ExtensionData, ffi::FfiBindings,
 };
-use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, pin::Pin, process, collections::HashSet};
+use std::{sync::{Arc, atomic::{AtomicBool, Ordering}}, process, collections::HashSet};
 
 pub struct Runtime {
     pub temp_vmstr: Arc<Mutex<HashSet<(u64, usize)>>>,
@@ -19,6 +19,8 @@ pub struct Runtime {
     pub initial_inst: u64,
     pub base: u64,
 
+    pub ffi: FfiBindings,
+    pub extension_data: ExtensionData,
 
     shutdown_rx: Mutex<UnboundedReceiver<ShutdownType>>,
     threads: ThreadCounter,
@@ -51,7 +53,7 @@ impl Runtime {
         let executor = Executor::from_archive(&archive);
         let memory = Memory::from_archive(&archive);
 
-        Arc::new(Runtime {
+        let runtime = Arc::new(Runtime {
             temp_vmstr: Arc::new(Mutex::new(HashSet::with_capacity(128))),
             tokio_rt: Arc::new(Runtime::tokio_rt(&archive)),
             stack_size: archive.conf.stack_size as usize,
@@ -61,25 +63,33 @@ impl Runtime {
             shutdown_rx: Mutex::new(channel.1),
             shutdown: AtomicBool::new(false),
             archive: Arc::new(archive),
+
+            ffi: FfiBindings::new(),
+            extension_data: ExtensionData::new(),
             
             initial_inst: unsafe { *memory.ptr().cast::<u64>() } * 8 + 0x8,
             base: memory.ptr() as u64,
             
             executor,
-        })
+        });
+        
+        for (&id, ext) in runtime.extensions.all() {
+            ext.init(runtime.clone(), id);
+        }
+
+        runtime
     }
 
     pub fn run(self: Arc<Self>) {
         let tokio_rt = self.tokio_rt.clone();
 
         tokio_rt.block_on(async move {
-            let mut is_first = true;
             let runtime = self;
 
             runtime.dispatch_extension_event(EventType::VMRun);
 
             loop {
-                let shutdown_type = runtime.run_once(is_first).await;
+                let shutdown_type = runtime.run_once().await;
 
                 // Preventing Memory Leaks
                 for (ptr, len) in runtime.temp_vmstr.lock().await.drain() {
@@ -87,8 +97,6 @@ impl Runtime {
                 }
 
                 if shutdown_type == ShutdownType::Restarting {
-                    is_first = false;
-
                     runtime.threads.reset().await;
 
                     *runtime.memory.write().await = Memory::from_archive(&runtime.archive);
@@ -107,7 +115,7 @@ impl Runtime {
         });
     }
 
-    async fn run_once(self: &Arc<Self>, _is_first: bool) -> ShutdownType {
+    async fn run_once(self: &Arc<Self>) -> ShutdownType {
         self.shutdown.store(false, Ordering::SeqCst);
 
         self.spawn(self.initial_inst).await;
@@ -140,9 +148,15 @@ impl Runtime {
         let thread = self.threads.create(self.clone(), self.stack_size, addr).await;
         let executor = self.executor.clone();
 
-        tokio::task::spawn(async move {
-            executor.call(thread).await;
-        });
+        if self.archive.conf.threading_kind == ThreadingKind::Managed {
+            tokio::task::spawn(async move {
+                executor.call(thread).await;
+            });
+        } else {
+            tokio::spawn(async move {
+                executor.call(thread).await;
+            });
+        }
     }
 
     pub fn shutdown(&self, shutdown_type: ShutdownType) {
@@ -150,7 +164,7 @@ impl Runtime {
         self.shutdown.store(true, Ordering::SeqCst);
     }
 
-    pub fn dispose_thread(&self, thread: Pin<Arc<VirtualThread>>) {
+    pub fn dispose_thread(&self, thread: VThread) {
         self.threads.delete(thread);
     }
 
