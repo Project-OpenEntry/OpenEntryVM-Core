@@ -13,9 +13,9 @@ This repository is Core of Project OpenEntry, Virtual Machine of Project OpenEnt
 * I am not sure about this spaghetti code will cause memory leak or not.
 
 # Progress
-[x] Executor
-[x] Extension System
-[ ] Graphics Extension
-[ ] CLI Implementation
-[ ] Entry-to-EntX Parser (Kotlin)
-[ ] (Optional) Scratch Extension
+- [x] Executor
+- [x] Extension System
+- [ ] Graphics Extension
+- [ ] CLI Implementation
+- [ ] Entry-to-EntX Parser (Kotlin)
+- [ ] (Optional) Scratch Extension
