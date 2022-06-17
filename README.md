@@ -11,3 +11,11 @@ This repository is Core of Project OpenEntry, Virtual Machine of Project OpenEnt
 * Parser isn't implemented yet.
 * Graphic Operations will be provided as separate extension.
 * I am not sure about this spaghetti code will cause memory leak or not.
+
+# Progress
+[x] Executor
+[x] Extension System
+[ ] Graphics Extension
+[ ] CLI Implementation
+[ ] Entry-to-EntX Parser (Kotlin)
+[ ] (Optional) Scratch Extension
